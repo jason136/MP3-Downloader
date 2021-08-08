@@ -8,6 +8,8 @@ SPOTIPY_CLIENT_SECRET = '***REMOVED***'
 
 root = os.getcwd()
 
+illegal_chars = ['<', '>', ':', '\"', '/', '\\', '|', '?', '*']
+
 ytdl_options = {
     'format': 'bestaudio/best',
     'postprocessors': [{
@@ -70,9 +72,13 @@ def dl_spotify(link):
         pass
 
     os.chdir(root + '/out')
-    if not os.path.exists(playlist['name']):
-        os.mkdir(playlist['name'])
-    os.chdir(playlist['name'])
+    playlist_name = playlist['name']
+    for char in illegal_chars:
+        if char in playlist_name:
+            playlist_name = playlist_name.replace(char, '')
+    if not os.path.exists(playlist_name):
+        os.mkdir(playlist_name)
+    os.chdir(playlist_name)
     
     playlist = playlist['tracks']
     total = 0
@@ -111,7 +117,6 @@ def sp_helper(track, count, total):
 
     query = '{} {} lyrics'.format(title, artist)
     new_name = '{} - {}.mp3'.format(title, artist)
-    illegal_chars = ['<', '>', ':', '\"', '/', '\\', '|', '?', '*']
     for char in illegal_chars:
         if char in new_name:
             new_name = new_name.replace(char, '')
