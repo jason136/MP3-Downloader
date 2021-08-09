@@ -57,12 +57,12 @@ def dl_query(query, duration=None):
         else:
             result = ytdl.extract_info('ytsearch:{} lyrics'.format(query))
             filename = '{}.mp3'.format(result['entries'][0]['id'])
-    except Exception as e:
+    except DownloadError:
         print('Error during ytdl download of: ', query, '. Retrying...')
         try:
             result = ytdl.extract_info('ytsearch:{}'.format(query))
             print('Retry successful!')
-        except:
+        except DownloadError:
             return None
     
     return filename
@@ -84,26 +84,29 @@ def dl_yt_playlist(link):
     os.chdir(root + '/out')
     print('{}/{} 100{}. Playlist download complete!'.format(count, total, '%'))
 
-def dl_yt_video(link):
-    result = ytdl.extract_info(link, download=False)
-    filename = '{}.mp3'.format(result['id'])
-    new_name = '{}.mp3'.format(result['title'])
-    new_name = legalize_chars(new_name)
-    if os.path.exists(new_name):
-        return
-    ytdl.download([result['webpage_url']])
-    os.rename(filename, new_name)
-
-def dl_spotify(link, sp):
+def dl_yt_video(link, silent=True):
     try:
-        playlist = sp.playlist(playlist_id=link)
-    except ConnectionError:
-        print('Connection error, check internet connection')
-        return
-    except spotipy.client.SpotifyException:
-        print('Invalid spotify playlist url')
-        return
+        result = ytdl.extract_info(link, download=False)
+        if not silent:
+            print('Downloading Youtube audio from: {}'.format(result['title']))
+        filename = '{}.mp3'.format(result['id'])
+        new_name = '{}.mp3'.format(result['title'])
+        new_name = legalize_chars(new_name)
+        if os.path.exists(new_name):
+            return
+        ytdl.download([result['webpage_url']])
+        os.rename(filename, new_name)
+        if not silent:
+            print('Download complete!')
+    except DownloadError:
+        print('Error during download of: ', result['title'], '. Retrying...')
+        try:
+            result = ytdl.extract_info('ytsearch:{}'.format(result['title']))
+            print('Retry successful!')
+        except:
+            return None
 
+def dl_spotify(playlist):
     playlist_name = playlist['name']
     print('Downloading Spotify playlist: {}'.format(playlist_name))
     playlist_name = legalize_chars(playlist_name)
@@ -128,7 +131,7 @@ def dl_spotify(link, sp):
                 track['track']['name'], 
                 track['track']['artists'][0]['name']
             ))
-            retry = dl_sp_track(track)
+            retry = dl_sp_track(track['track'])
             if retry:
                 retries.append(retry)
             else:
@@ -140,7 +143,7 @@ def dl_spotify(link, sp):
                 track['track']['name'], 
                 track['track']['artists'][0]['name']
             ))
-        retry = dl_sp_track(track)
+        retry = dl_sp_track(track['track'])
         if retry:
             retries.append(retry)
         else:
@@ -151,7 +154,7 @@ def dl_spotify(link, sp):
                 track['track']['name'], 
                 track['track']['artists'][0]['name']
             ))
-            retry = dl_sp_track(track)
+            retry = dl_sp_track(track['track'])
             if retry:
                 retries.append(retry)
             else:
@@ -161,9 +164,11 @@ def dl_spotify(link, sp):
     os.remove('thumbnail.jpg')
     os.chdir(root + '/out')
 
-def dl_sp_track(track):
-    title = track['track']['name']
-    artist = track['track']['artists'][0]['name']
+def dl_sp_track(track, silent=True):
+    title = track['name']
+    artist = track['artists'][0]['name']
+    if not silent:
+        print('Downloading Spotify track: {} - {}'.format(title, artist))
     query = '{} {}'.format(title, artist)
     new_name = '{} - {}.mp3'.format(title, artist)
     new_name = legalize_chars(new_name)
@@ -207,6 +212,9 @@ def dl_sp_track(track):
     audio.add(TALB(encoding=3, text=track['track']['album']['name']))
     audio.save()
 
+    if not silent:
+        print('Download complete!')
+
 def progress(count=0, total=1, song=''):
     percentage = int(count * 1000 / total)
     print(
@@ -243,21 +251,35 @@ if __name__ == '__main__':
                 )
             )
             if 'open.spotify.com/playlist/' in link:
-                dl_spotify(link, sp)
+                try:
+                    playlist = sp.playlist(playlist_id=link)
+                except ConnectionError:
+                    print('Connection error, check internet connection')
+                    continue
+                except spotipy.client.SpotifyException:
+                    print('Invalid spotify playlist url')
+                    continue
+                dl_spotify(playlist)
+
             elif 'open.spotify.com/track/' in link:
-                #sp.track(link)
-                pass
+                try:
+                    track = sp.track(track_id=link)
+                except ConnectionError:
+                    print('Connection error, check internet connection')
+                    continue
+                except spotipy.client.SpotifyException:
+                    print('Invalid spotify track url')
+                    continue
+                track = sp.track(link)
+                dl_sp_track(track, False)
             elif 'open.spotify.com/artist/' in link:
                 pass
             else:
                 print('Invalid Spotify link. Please use playlist, album, or song share link')
         if 'www.youtube.com' in link:
-            try:
-                if 'list=' in link:
-                    dl_yt_playlist(link)
-                elif '?v=' in link:
-                    dl_yt_video(link)
-                else:
-                    print('Invalid Youtube link. Please make sure the videoid or playlistid is present')
-            except DownloadError as e:
-                raise e
+            if 'list=' in link:
+                dl_yt_playlist(link)
+            elif '?v=' in link:
+                dl_yt_video(link, False)
+            else:
+                print('Invalid Youtube link. Please make sure the videoid or playlistid is present')
