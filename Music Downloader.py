@@ -5,8 +5,7 @@ from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, error
 from youtube_dl.utils import DownloadError
 from requests.exceptions import ConnectionError
 
-SPOTIPY_CLIENT_ID = 'dd38cb61894e447a99288ef7c97db1b6'
-SPOTIPY_CLIENT_SECRET = '9e52669ac6224d689a2c391c39cd71ec'
+import tokens
 
 root = os.getcwd()
 
@@ -101,11 +100,12 @@ def dl_yt_video(link):
 
 def dl_spotify(link):
     sp = spotipy.Spotify(
-        auth_manager=SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID, 
-        client_secret=SPOTIPY_CLIENT_SECRET, 
-        redirect_uri='http://localhost:8000', 
-        scope='user-library-read', 
-        cache_path='{}/OAuthCache.txt'.format(root)
+        auth_manager=SpotifyOAuth(
+            client_id=tokens.SPOTIPY_CLIENT_ID, 
+            client_secret=tokens.SPOTIPY_CLIENT_SECRET, 
+            redirect_uri='http://localhost:8000', 
+            scope='user-library-read', 
+            cache_path='{}/OAuthCache.txt'.format(root)
         )
     )
 
