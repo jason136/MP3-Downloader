@@ -38,18 +38,15 @@ ytdl = youtube_dl.YoutubeDL(ytdl_options)
 def dl_query(query, duration=None):
     try:
         if duration:
-            lyric_vids = ytdl.extract_info('ytsearch4:{} lyrics'.format(query), download=False)['entries']
+            lyric_vids = ytdl.extract_info('ytsearch4:{} lyrics'.format(query), download=False, extra_info={'duration', 'id'})['entries']
             print(len(lyric_vids))
-            music_vids = ytdl.extract_info('ytsearch:{}'.format(query), download=False)['entries']
-            print(len(music_vids))
             best_diff = abs(duration - lyric_vids[0]['duration'])
             best_option = lyric_vids[0]
 
-            for result in lyric_vids:
-                if abs(duration - result['duration']) < best_diff:
-                    best_option = result
-            for result in music_vids:
-                if abs(duration - result['duration']) < 3:
+            for result in reversed(lyric_vids):
+                diff = abs(duration - result['duration'])
+                print('diff: ', diff, ' best diff: ', best_diff)
+                if (diff <= best_diff):
                     best_option = result
             
             print(duration, ' ------------ ', result['duration'])
@@ -61,18 +58,17 @@ def dl_query(query, duration=None):
             result = ytdl.extract_info('ytsearch:{} lyrics'.format(query))
             filename = '{}.mp3'.format(result['entries'][0]['id'])
     except Exception as e:
-        raise e
-        print('error during ytdl download of ', query, ', retrying...')
+        print('Error during ytdl download of: ', query, '. Retrying...')
         try:
             result = ytdl.extract_info('ytsearch:{}'.format(query))
-            print('retry successful!')
+            print('Retry successful!')
         except:
             return None
     
     return filename
 
 def dl_yt_playlist(link):
-    print('gathering Youtube playlist data...')
+    print('Gathering Youtube playlist data...')
     result = ytdl.extract_info(link, download=False)
     playlist_name = result['title']
     playlist_name = legalize_chars(playlist_name)
@@ -86,7 +82,7 @@ def dl_yt_playlist(link):
         dl_yt_video(video['webpage_url'])
         count = count + 1
     os.chdir(root + '/out')
-    print('{}/{} 100{}, playlist download complete!'.format(count, total, '%'))
+    print('{}/{} 100{}. Playlist download complete!'.format(count, total, '%'))
 
 def dl_yt_video(link):
     result = ytdl.extract_info(link, download=False)
@@ -98,27 +94,18 @@ def dl_yt_video(link):
     ytdl.download([result['webpage_url']])
     os.rename(filename, new_name)
 
-def dl_spotify(link):
-    sp = spotipy.Spotify(
-        auth_manager=SpotifyOAuth(
-            client_id=tokens.SPOTIPY_CLIENT_ID, 
-            client_secret=tokens.SPOTIPY_CLIENT_SECRET, 
-            redirect_uri='http://localhost:8000', 
-            scope='user-library-read', 
-            cache_path='{}/OAuthCache.txt'.format(root)
-        )
-    )
-
+def dl_spotify(link, sp):
     try:
         playlist = sp.playlist(playlist_id=link)
     except ConnectionError:
-        print('connection error, check internet connection')
+        print('Connection error, check internet connection')
         return
     except spotipy.client.SpotifyException:
-        print('invalid spotify playlist url')
+        print('Invalid spotify playlist url')
         return
 
     playlist_name = playlist['name']
+    print('Downloading Spotify playlist: {}'.format(playlist_name))
     playlist_name = legalize_chars(playlist_name)
     if not os.path.exists(playlist_name):
         os.mkdir(playlist_name)
@@ -170,7 +157,7 @@ def dl_spotify(link):
             else:
                 count = count + 1
 
-    print('{}/{} 100{}, playlist download complete!'.format(count, total, '%'))
+    print('{}/{} 100{}, Playlist download complete!'.format(count, total, '%'))
     os.remove('thumbnail.jpg')
     os.chdir(root + '/out')
 
@@ -184,9 +171,9 @@ def dl_sp_track(track):
         return 
 
     duration = int(track['track']['duration_ms'] / 1000)
-    filename = dl_query(query)
+    filename = dl_query(query, duration)
     if not filename:
-        print('retry unsucessful, song will be reaquired at the end of queue')
+        print('Retry unsucessful. Song will be reaquired at the end of queue')
         return track
 
     if not os.path.isfile(new_name): 
@@ -197,7 +184,7 @@ def dl_sp_track(track):
             thumbnail = requests.get(track['track']['album']['images'][0]['url']).content
             handle.write(thumbnail)
         except:
-            print('thumbnail error on ', title, ' - ', artist)
+            print('Thumbnail error on thumbnail for: ', title, ' - ', artist)
     
     audio = MP3(new_name, ID3=ID3)
     try:
@@ -243,17 +230,27 @@ if __name__ == '__main__':
     os.chdir(root + '/out')
 
     while True:
-        link = input('insert Spotify/Youtube link or Youtube search query: ')
+        link = input('Insert Spotify/Youtube link or Youtube search query: ')
 
         if 'open.spotify.com' in link:
+            sp = spotipy.Spotify(
+                auth_manager=SpotifyOAuth(
+                    client_id=tokens.SPOTIPY_CLIENT_ID, 
+                    client_secret=tokens.SPOTIPY_CLIENT_SECRET, 
+                    redirect_uri='http://localhost:8000', 
+                    scope='user-library-read', 
+                    cache_path='{}/OAuthCache.txt'.format(root)
+                )
+            )
             if 'open.spotify.com/playlist/' in link:
-                dl_spotify(link)
+                dl_spotify(link, sp)
             elif 'open.spotify.com/track/' in link:
+                #sp.track(link)
                 pass
             elif 'open.spotify.com/artist/' in link:
                 pass
             else:
-                print('invalid Spotify link, please use playlist, album, or song share link')
+                print('Invalid Spotify link. Please use playlist, album, or song share link')
         if 'www.youtube.com' in link:
             try:
                 if 'list=' in link:
@@ -261,6 +258,6 @@ if __name__ == '__main__':
                 elif '?v=' in link:
                     dl_yt_video(link)
                 else:
-                    print('invalid Youtube link, please make sure the videoid or playlistid is present')
+                    print('Invalid Youtube link. Please make sure the videoid or playlistid is present')
             except DownloadError as e:
                 raise e
