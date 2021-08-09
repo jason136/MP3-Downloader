@@ -2,13 +2,13 @@ import youtube_dl, spotipy, os, requests
 from spotipy.oauth2 import SpotifyOAuth
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, error
+from youtube_dl.utils import DownloadError
+from requests.exceptions import ConnectionError
 
-SPOTIPY_CLIENT_ID = '***REMOVED***'
-SPOTIPY_CLIENT_SECRET = '***REMOVED***'
+SPOTIPY_CLIENT_ID = 'dd38cb61894e447a99288ef7c97db1b6'
+SPOTIPY_CLIENT_SECRET = '9e52669ac6224d689a2c391c39cd71ec'
 
 root = os.getcwd()
-
-illegal_chars = ['<', '>', ':', '\"', '/', '\\', '|', '?', '*']
 
 ytdl_options = {
     'format': 'bestaudio/best',
@@ -19,9 +19,10 @@ ytdl_options = {
     }],
     'extractaudio': True,
     'audioformat': 'mp3',
+    'hls-prefer-ffmpeg': True, 
     'outtmpl': '%(id)s.%(ext)s',
     'restrictfilenames': True,
-    'noplaylist': False,
+    'noplaylist': True,
     'nocheckcertificate': True,
     'quiet': True,
     'no_warnings': True,
@@ -35,47 +36,90 @@ ffmpeg_options = {
 
 ytdl = youtube_dl.YoutubeDL(ytdl_options)
 
-def dl_query(query):
-
+def dl_query(query, duration=None):
     try:
-        result = ytdl.extract_info('ytsearch:{}'.format(query))
+        if duration:
+            lyric_vids = ytdl.extract_info('ytsearch4:{} lyrics'.format(query), download=False)['entries']
+            print(len(lyric_vids))
+            music_vids = ytdl.extract_info('ytsearch:{}'.format(query), download=False)['entries']
+            print(len(music_vids))
+            best_diff = abs(duration - lyric_vids[0]['duration'])
+            best_option = lyric_vids[0]
+
+            for result in lyric_vids:
+                if abs(duration - result['duration']) < best_diff:
+                    best_option = result
+            for result in music_vids:
+                if abs(duration - result['duration']) < 3:
+                    best_option = result
+            
+            print(duration, ' ------------ ', result['duration'])
+
+            ytdl.download([best_option['webpage_url']])
+
+            filename = '{}.mp3'.format(best_option['id'])
+        else:
+            result = ytdl.extract_info('ytsearch:{} lyrics'.format(query))
+            filename = '{}.mp3'.format(result['entries'][0]['id'])
     except Exception as e:
-        print('error during ytdl download of ', query, '\n')
-        result = ytdl.extract_info('ytsearch:{}'.format(query))
+        raise e
+        print('error during ytdl download of ', query, ', retrying...')
+        try:
+            result = ytdl.extract_info('ytsearch:{}'.format(query))
+            print('retry successful!')
+        except:
+            return None
     
-    filename = '{}.mp3'.format(result['entries'][0]['id'])
     return filename
 
-def dl_link(link):
-    try:
-        ytdl.download([link])
-    except:
-        print('invalid youtube video link passed')
+def dl_yt_playlist(link):
+    print('gathering Youtube playlist data...')
+    result = ytdl.extract_info(link, download=False)
+    playlist_name = result['title']
+    playlist_name = legalize_chars(playlist_name)
+    if not os.path.exists(playlist_name):
+        os.mkdir(playlist_name)
+    os.chdir(playlist_name)
+    total = len(result['entries'])
+    count = 0
+    for video in result['entries']:
+        progress(count, total, video['title'])
+        dl_yt_video(video['webpage_url'])
+        count = count + 1
+    os.chdir(root + '/out')
+    print('{}/{} 100{}, playlist download complete!'.format(count, total, '%'))
+
+def dl_yt_video(link):
+    result = ytdl.extract_info(link, download=False)
+    filename = '{}.mp3'.format(result['id'])
+    new_name = '{}.mp3'.format(result['title'])
+    new_name = legalize_chars(new_name)
+    if os.path.exists(new_name):
+        return
+    ytdl.download([result['webpage_url']])
+    os.rename(filename, new_name)
 
 def dl_spotify(link):
-
-    try:
-        sp = spotipy.Spotify(
-            auth_manager=SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID, 
-            client_secret=SPOTIPY_CLIENT_SECRET, 
-            redirect_uri='http://localhost:8000', 
-            scope='user-library-read', 
-            cache_path='{}/OAuthCache.txt'.format(root)
-            )
+    sp = spotipy.Spotify(
+        auth_manager=SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID, 
+        client_secret=SPOTIPY_CLIENT_SECRET, 
+        redirect_uri='http://localhost:8000', 
+        scope='user-library-read', 
+        cache_path='{}/OAuthCache.txt'.format(root)
         )
-    except:
-        print('error initializing spotify client, check internet connection')
+    )
+
     try:
         playlist = sp.playlist(playlist_id=link)
-    except:
+    except ConnectionError:
+        print('connection error, check internet connection')
+        return
+    except spotipy.client.SpotifyException:
         print('invalid spotify playlist url')
-        pass
+        return
 
-    os.chdir(root + '/out')
     playlist_name = playlist['name']
-    for char in illegal_chars:
-        if char in playlist_name:
-            playlist_name = playlist_name.replace(char, '')
+    playlist_name = legalize_chars(playlist_name)
     if not os.path.exists(playlist_name):
         os.mkdir(playlist_name)
     os.chdir(playlist_name)
@@ -89,56 +133,71 @@ def dl_spotify(link):
     total = total + len(tracks)
 
     count = 0
+    retries = []
     while playlist['next']:
         tracks = playlist['items']
         for track in tracks:
-            sp_helper(track, count, total)
-            count = count + 1
+            progress(count, total, '{} - {}'.format(
+                track['track']['name'], 
+                track['track']['artists'][0]['name']
+            ))
+            retry = dl_sp_track(track)
+            if retry:
+                retries.append(retry)
+            else:
+                count = count + 1
         playlist = sp.next(playlist)
     tracks = playlist['items']
     for track in tracks:
-        sp_helper(track, count, total)
-        count = count + 1
+        progress(count, total, '{} - {}'.format(
+                track['track']['name'], 
+                track['track']['artists'][0]['name']
+            ))
+        retry = dl_sp_track(track)
+        if retry:
+            retries.append(retry)
+        else:
+            count = count + 1
+    while count < total:
+        for track in retries:
+            progress(count, total, '{} - {}'.format(
+                track['track']['name'], 
+                track['track']['artists'][0]['name']
+            ))
+            retry = dl_sp_track(track)
+            if retry:
+                retries.append(retry)
+            else:
+                count = count + 1
 
-    print('{}/{} 100{} complete'.format(count, total, '%'))
+    print('{}/{} 100{}, playlist download complete!'.format(count, total, '%'))
     os.remove('thumbnail.jpg')
     os.chdir(root + '/out')
 
-def sp_helper(track, count, total):
+def dl_sp_track(track):
     title = track['track']['name']
     artist = track['track']['artists'][0]['name']
-
-    percentage = int(count * 1000 / total)
-    print(
-        '{}/{} '.format(count, total),
-        percentage / 10.0, '%', 
-        ' Complete. Now Processing: {} - {}'.format(title, artist)
-    )
-
-    query = '{} {} lyrics'.format(title, artist)
+    query = '{} {}'.format(title, artist)
     new_name = '{} - {}.mp3'.format(title, artist)
-    for char in illegal_chars:
-        if char in new_name:
-            new_name = new_name.replace(char, '')
-
+    new_name = legalize_chars(new_name)
     if os.path.isfile(new_name):
-        return
+        return 
+
+    duration = int(track['track']['duration_ms'] / 1000)
     filename = dl_query(query)
+    if not filename:
+        print('retry unsucessful, song will be reaquired at the end of queue')
+        return track
+
     if not os.path.isfile(new_name): 
-        try:
-            os.rename(filename, new_name)
-        except Exception as e:
-            os.remove(new_name)
-            os.rename(filename, new_name)
-            print(e, '\n')
+        os.rename(filename, new_name)
 
     with open('thumbnail.jpg', 'wb') as handle:
         try:
             thumbnail = requests.get(track['track']['album']['images'][0]['url']).content
             handle.write(thumbnail)
-        except Exception as e:
+        except:
             print('thumbnail error on ', title, ' - ', artist)
-            print(e, '\n')
     
     audio = MP3(new_name, ID3=ID3)
     try:
@@ -161,12 +220,47 @@ def sp_helper(track, count, total):
     audio.add(TALB(encoding=3, text=track['track']['album']['name']))
     audio.save()
 
+def progress(count=0, total=1, song=''):
+    percentage = int(count * 1000 / total)
+    print(
+        '{}/{} '.format(count, total),
+        percentage / 10.0, '%', 
+        'Complete. Now Processing: ', 
+        song
+    )
+
+def legalize_chars(filename):
+    illegal_chars = ['<', '>', ':', '\"', '/', '\\', '|', '?', '*']
+    for char in illegal_chars:
+        if char in filename:
+            filename = filename.replace(char, '')
+    return filename
+
 if __name__ == '__main__':
 
     if not os.path.exists('out'):
         os.mkdir('out')
+    os.chdir(root + '/out')
 
     while True:
-        link = input('insert Spotify playlist link: ')
+        link = input('insert Spotify/Youtube link or Youtube search query: ')
 
-        dl_spotify(link)
+        if 'open.spotify.com' in link:
+            if 'open.spotify.com/playlist/' in link:
+                dl_spotify(link)
+            elif 'open.spotify.com/track/' in link:
+                pass
+            elif 'open.spotify.com/artist/' in link:
+                pass
+            else:
+                print('invalid Spotify link, please use playlist, album, or song share link')
+        if 'www.youtube.com' in link:
+            try:
+                if 'list=' in link:
+                    dl_yt_playlist(link)
+                elif '?v=' in link:
+                    dl_yt_video(link)
+                else:
+                    print('invalid Youtube link, please make sure the videoid or playlistid is present')
+            except DownloadError as e:
+                raise e
