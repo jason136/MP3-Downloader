@@ -35,7 +35,7 @@ ffmpeg_options = {
 
 ytdl = youtube_dl.YoutubeDL(ytdl_options)
 
-def dl_query(query, duration=None):
+def dl_query(query, silent=True, duration=None, recurse=False):
     try:
         if duration:
             lyric_vids = ytdl.extract_info('ytsearch4:{} lyrics'.format(query), download=False, extra_info={'duration', 'id'})['entries']
@@ -50,22 +50,30 @@ def dl_query(query, duration=None):
                     best_option = result
             
             print(duration, ' ------------ ', result['duration'])
-
+            
+            if not silent:
+                print('Downloading audio from query, {}'.format(best_option['title']))
             ytdl.download([best_option['webpage_url']])
-
             filename = '{}.mp3'.format(best_option['id'])
         else:
-            result = ytdl.extract_info('ytsearch:{} lyrics'.format(query))
+            result = ytdl.extract_info('ytsearch:{}'.format(query), download=False, extra_info={'duration', 'id'})
+            if not silent:
+                print('Downloading audio from query: {}'.format(result['title']))
+            ytdl.download([result['webpage_url']])
             filename = '{}.mp3'.format(result['entries'][0]['id'])
     except DownloadError:
-        print('Error during ytdl download of: ', query, '. Retrying...')
-        try:
-            result = ytdl.extract_info('ytsearch:{}'.format(query))
-            print('Retry successful!')
-        except DownloadError:
+        if recurse:
+            print('Retry unsucessful!')
             return None
-    
-    return filename
+        else:
+            print('Error during ytdl download of: ', query, '. Retrying...')
+            filename = dl_query(query, duration=duration, recurse=True)
+    finally:
+        if recurse:
+            print('Retry sucessful!')
+        if not silent:
+            print('Download complete!')
+        return filename
 
 def dl_yt_playlist(link):
     print('Gathering Youtube playlist data...')
@@ -84,7 +92,7 @@ def dl_yt_playlist(link):
     os.chdir(root + '/out')
     print('{}/{} 100{}. Playlist download complete!'.format(count, total, '%'))
 
-def dl_yt_video(link, silent=True):
+def dl_yt_video(link, silent=True, recurse=False):
     try:
         result = ytdl.extract_info(link, download=False)
         if not silent:
@@ -99,12 +107,16 @@ def dl_yt_video(link, silent=True):
         if not silent:
             print('Download complete!')
     except DownloadError:
-        print('Error during download of: ', result['title'], '. Retrying...')
-        try:
-            result = ytdl.extract_info('ytsearch:{}'.format(result['title']))
-            print('Retry successful!')
-        except:
+        if recurse:
+            print('Retry unsucessful!')
             return None
+        else:
+            print('Error during ytdl download of: ', result['title'], '. Retrying...')
+            dl_yt_video(link, False, True)
+    finally:
+        if recurse:
+            print('Retry sucessful!')
+        return filename
 
 def dl_spotify(playlist):
     playlist_name = playlist['name']
@@ -176,9 +188,8 @@ def dl_sp_track(track, silent=True):
         return 
 
     duration = int(track['track']['duration_ms'] / 1000)
-    filename = dl_query(query, duration)
+    filename = dl_query(query, duration=duration)
     if not filename:
-        print('Retry unsucessful. Song will be reaquired at the end of queue')
         return track
 
     if not os.path.isfile(new_name): 
@@ -283,3 +294,5 @@ if __name__ == '__main__':
                 dl_yt_video(link, False)
             else:
                 print('Invalid Youtube link. Please make sure the videoid or playlistid is present')
+        else:
+            dl_query(link, silent=False)
