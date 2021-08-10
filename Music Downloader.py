@@ -130,15 +130,23 @@ def dl_yt_video(link, silent=True, recurse=False):
         if str(e) == 'local variable \'filename\' referenced before assignment':
             return None
 
-def dl_spotify(playlist, silent=False):
-    playlist_name = playlist['name']
-    print('Downloading Spotify playlist: \"{}\"....'.format(playlist_name))
+def dl_spotify(input_link, silent=False):
+    playlist_name = input_link['name']
+    if len(input_link['tracks']['items'][0]) == 6:
+        playlist_type = 'playlist'
+    else:
+        playlist_type = 'album'
+        cover = []
+        cover.append(input_link['images'][0]['url'])
+        cover.append(playlist_name)
+
+    print('Downloading Spotify {}: \"{}\"....'.format(playlist_type, playlist_name))
     playlist_name = legalize_chars(playlist_name)
     if not os.path.exists(playlist_name):
         os.mkdir(playlist_name)
     os.chdir(playlist_name)
     
-    playlist = playlist['tracks']
+    playlist = input_link['tracks']
     total = 0
     while playlist['next']:
         total = total + 100
@@ -146,42 +154,48 @@ def dl_spotify(playlist, silent=False):
     tracks = playlist['items']
     total = total + len(tracks)
 
+    tracks = playlist['items']
     count = 0
     retries = []
     while playlist['next']:
-        tracks = playlist['items']
+        if playlist_type == 'playlist':
+            track = track['track']
         for track in tracks:
             if not silent:
                 progress(count, total, '{} - {}'.format(
                     track['track']['name'], 
                     track['track']['artists'][0]['name']
                 ))
-            retry = dl_sp_track(track['track'])
+            retry = dl_sp_track(track) if playlist_type == 'playlist' else dl_sp_track(track, album=cover)
             if retry:
                 retries.append(retry)
             else:
                 count = count + 1
         playlist = sp.next(playlist)
-    tracks = playlist['items']
     for track in tracks:
+        if playlist_type == 'playlist':
+            track = track['track']
         if not silent:
             progress(count, total, '{} - {}'.format(
-                    track['track']['name'], 
-                    track['track']['artists'][0]['name']
+                    track['name'], 
+                    track['artists'][0]['name']
                 ))
-        retry = dl_sp_track(track['track'])
+        retry = dl_sp_track(track) if playlist_type == 'playlist' else dl_sp_track(track, album=cover)
         if retry:
             retries.append(retry)
         else:
             count = count + 1
+
     while count < total:
         for track in retries:
+            if playlist_type == 'playlist':
+                track = track['track']
             if not silent:
                 progress(count, total, '{} - {}'.format(
-                    track['track']['name'], 
-                    track['track']['artists'][0]['name']
+                    track['name'], 
+                    track['artists'][0]['name']
                 ))
-            retry = dl_sp_track(track['track'])
+            retry = dl_sp_track(track) if playlist_type == 'playlist' else dl_sp_track(track, album=cover)
             if retry:
                 retries.append(retry)
             else:
@@ -191,7 +205,7 @@ def dl_spotify(playlist, silent=False):
     os.remove('thumbnail.jpg')
     os.chdir(root + '/out')
 
-def dl_sp_track(track, silent=True):
+def dl_sp_track(track, silent=True, album=None):
     title = track['name']
     artist = track['artists'][0]['name']
     if not silent:
@@ -212,16 +226,23 @@ def dl_sp_track(track, silent=True):
 
     with open('thumbnail.jpg', 'wb') as handle:
         try:
-            thumbnail = requests.get(track['album']['images'][0]['url']).content
+            if album:
+                thumbnail = requests.get(album[0]).content
+            else:
+                thumbnail = requests.get(track['album']['images'][0]['url']).content
             handle.write(thumbnail)
-        except:
+        except Exception as e:
+            raise e
             print('ERROR: Processing of thumbnail for \"{} - {}\" failed.'.format(title, artist))
     
     audio = MP3(new_name, ID3=ID3)
     try:
         audio.add_tags()
-    except error:
-        print('ERROR: ID3 tags unable to be written.')
+    except error as e:
+        if 'an ID3 tag already exists' in str(e):
+            pass
+        else:
+            print('ERROR: ID3 tags unable to be written.')
     audio.tags.add(
         APIC(
             encoding=3,
@@ -235,8 +256,9 @@ def dl_sp_track(track, silent=True):
     audio = ID3(new_name)
     audio.add(TIT2(encoding=3, text=title))
     audio.add(TPE1(encoding=3, text=artist))
-    audio.add(TALB(encoding=3, text=track['album']['name']))
+    audio.add(TALB(encoding=3, text=album[1] if album else track['album']['name']))
     audio.save()
+    os.remove('thumbnail.jpg')
     if not silent:
         print('Download complete!')
 
@@ -275,18 +297,7 @@ if __name__ == '__main__':
                         cache_path='{}/OAuthCache.txt'.format(root)
                     )
                 )
-                if 'open.spotify.com/playlist/' in link:
-                    try:
-                        playlist = sp.playlist(playlist_id=link)
-                    except ConnectionError:
-                        print('ERROR: Connection failed, check internet connection.')
-                        continue
-                    except spotipy.client.SpotifyException:
-                        print('Invalid spotify playlist URL.')
-                        continue
-                    dl_spotify(playlist, silent=False)
-
-                elif 'open.spotify.com/track/' in link:
+                if 'open.spotify.com/track/' in link:
                     try:
                         track = sp.track(track_id=link)
                     except ConnectionError:
@@ -297,13 +308,34 @@ if __name__ == '__main__':
                         continue
                     track = sp.track(link)
                     dl_sp_track(track, silent=False)
-                    os.remove('thumbnail.jpg')
+                
+                elif 'open.spotify.com/playlist/' in link:
+                    try:
+                        playlist = sp.playlist(playlist_id=link)
+                    except ConnectionError:
+                        print('ERROR: Connection failed, check internet connection.')
+                        continue
+                    except spotipy.client.SpotifyException:
+                        print('Invalid spotify playlist URL.')
+                        continue
+                    dl_spotify(playlist, silent=False)                
+
                 elif 'open.spotify.com/album/' in link:
-                    pass
+                    try:
+                        album = sp.album(album_id=link)
+                    except ConnectionError:
+                        print('ERROR: Connection failed, check internet connection.')
+                        continue
+                    except spotipy.client.SpotifyException:
+                        print('Invalid spotify playlist URL.')
+                        continue
+                    dl_spotify(album, silent=False)
+
                 elif 'open.spotify.com/artist/' in link:
-                    pass
+                    print('Spotify artist support has not been implemented yet')
+
                 else:
-                    print('ERROR: Invalid Spotify link. Please use playlist, album, artist, or song share link.')
+                    print('ERROR: Unrecognized Spotify link. Please use playlist, album, artist, or song share link.')
             elif 'www.youtube.com' in link:
                 if '?v=' in link:
                     dl_yt_video(link, silent=False)
@@ -314,6 +346,5 @@ if __name__ == '__main__':
             else:
                 dl_query(link, silent=False)
         except Exception as e:
-            raise e
             print('ERROR: Unrecognized error. Please try again.')
             print
