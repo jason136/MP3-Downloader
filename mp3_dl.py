@@ -4,7 +4,7 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TRCK
 from mutagen.id3 import ID3NoHeaderError
 from youtube_dl.utils import DownloadError
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 
 import tokens
 
@@ -80,7 +80,7 @@ def dl_yt_video(link, silent=True, recurse=False):
         if os.path.exists(new_name):
             os.remove(new_name)
         os.rename(filename, new_name)
-    except DownloadError as e:
+    except (DownloadError, HTTPError) as e:
         if 'Incomplete YouTube ID' in str(e):
             return
         elif 'Video unavailable' in str(e):
@@ -126,7 +126,7 @@ def dl_query(query, silent=True, duration=None, recurse=0):
             if os.path.exists(new_name):
                 os.remove(new_name)
             os.rename(filename, new_name)
-    except DownloadError:
+    except (DownloadError, HTTPError):
         if recurse >= 4:
             print('Retry unsucessful! Please try again later.')
             return None
@@ -154,21 +154,21 @@ def dl_spotify(input_link, silent=False):
     os.chdir(playlist_name)
     
     playlist = input_link['tracks']
-    global total, count, tasks
+    global total, count
     while playlist['next']:
         total = total + 100
         playlist = sp.next(playlist)
     tracks = playlist['items']
     total = total + len(tracks)
 
-    tracks = playlist['items']
-
     for i in range(10):
         t = threading.Thread(target=sp_playlist_worker)
         t.daemon = True
         t.start()
 
+    playlist = input_link['tracks']
     while playlist['next']:
+        tracks = playlist['items']
         for track in tracks:
             if playlist_type == 'playlist':
                 track = track['track']
@@ -177,7 +177,9 @@ def dl_spotify(input_link, silent=False):
             else:
                 args = [track, cover, None]
             q.put(args)
-
+        playlist = sp.next(playlist)
+    
+    tracks = playlist['items']
     for track in tracks:
         if playlist_type == 'playlist':
             track = track['track']
@@ -188,12 +190,12 @@ def dl_spotify(input_link, silent=False):
         q.put(args)
     
     q.join()
-    count = 0
-    total = 0
 
     if not silent:
         print('{}/{} 100{}, Playlist download complete!'.format(count, total, '%'))
     os.chdir(root + '/out')
+    count = 0
+    total = 0
 
 def dl_sp_track(track, silent=True, album=None):
     title = track['name']
@@ -245,7 +247,7 @@ def dl_sp_track(track, silent=True, album=None):
             tags = ID3(new_name)
         except ID3NoHeaderError:
             print("Adding ID3 header")
-        tags = ID3()
+            tags = ID3()
         tags["TIT2"] = TIT2(encoding=3, text=title)
         tags["TALB"] = TALB(encoding=3, text=album_name)
         tags["TPE1"] = TPE1(encoding=3, text=artist)
