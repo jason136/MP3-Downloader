@@ -1,7 +1,8 @@
-import youtube_dl, spotipy, os, requests, subprocess
+import youtube_dl, spotipy, os, requests, threading, queue
 from spotipy.oauth2 import SpotifyOAuth
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, error
+from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TRCK
+from mutagen.id3 import ID3NoHeaderError
 from youtube_dl.utils import DownloadError
 from requests.exceptions import ConnectionError
 
@@ -9,9 +10,11 @@ import tokens
 
 root = os.getcwd()
 
+q = queue.Queue()
+sp = None
+
 count = 0
 total = 0
-retries = []
 
 ytdl_options = {
     'format': 'bestaudio/best',
@@ -96,7 +99,7 @@ def dl_yt_video(link, silent=True, recurse=False):
         if str(e) == 'local variable \'filename\' referenced before assignment':
             return None
 
-def dl_query(query, silent=True, duration=None, recurse=False):
+def dl_query(query, silent=True, duration=None, recurse=0):
     try:
         if duration:
             lyric_vids = ytdl.extract_info('ytsearch:{} lyrics'.format(query), download=False, extra_info={'duration', 'id'})['entries']
@@ -113,7 +116,7 @@ def dl_query(query, silent=True, duration=None, recurse=False):
             filename = '{}.mp3'.format(best_option['id'])
         else:
             if not silent:
-                print('Querying Youtube search for \"{}\"...'.format(link))
+                print('Querying Youtube search for \"{}\"...'.format(query))
             result = ytdl.extract_info('ytsearch:{}'.format(query))
             filename = '{}.mp3'.format(result['entries'][0]['id'])
             new_name = result['entries'][0]['title']
@@ -123,14 +126,14 @@ def dl_query(query, silent=True, duration=None, recurse=False):
             if os.path.exists(new_name):
                 os.remove(new_name)
             os.rename(filename, new_name)
-    except DownloadError as e:
-        if recurse:
-            print('Retry unsucessful!')
+    except DownloadError:
+        if recurse >= 4:
+            print('Retry unsucessful! Please try again later.')
             return None
         else:
             print('ERROR: Download for query: \"', query, '\" failed. Retrying...')
-            filename = dl_query(query, duration=duration, silent=True, recurse=True)
-    if recurse:
+            filename = dl_query(query, silent=True, duration=duration, recurse=recurse+1)
+    if recurse >= 4:
         print('Retry sucessful, Download complete!')
     return filename
 
@@ -144,14 +147,14 @@ def dl_spotify(input_link, silent=False):
         cover.append(input_link['images'][0]['url'])
         cover.append(playlist_name)
 
-    print('Downloading Spotify {}: \"{}\"....'.format(playlist_type, playlist_name))
+    print('Downloading Spotify {}: \"{}\"...'.format(playlist_type, playlist_name))
     playlist_name = legalize_chars(playlist_name)
     if not os.path.exists(playlist_name):
         os.mkdir(playlist_name)
     os.chdir(playlist_name)
     
     playlist = input_link['tracks']
-    total = 0
+    global total, count, tasks
     while playlist['next']:
         total = total + 100
         playlist = sp.next(playlist)
@@ -159,48 +162,35 @@ def dl_spotify(input_link, silent=False):
     total = total + len(tracks)
 
     tracks = playlist['items']
-    if playlist_type == 'playlist':
-        track = track['track']
+
+    for i in range(10):
+        t = threading.Thread(target=sp_playlist_worker)
+        t.daemon = True
+        t.start()
 
     while playlist['next']:
         for track in tracks:
-            if not silent:
-                progress(count, total, '{} - {}'.format(
-                    track['track']['name'], 
-                    track['track']['artists'][0]['name']
-                ))
-            retry = dl_sp_track(track) if playlist_type == 'playlist' else dl_sp_track(track, album=cover)
-            if retry:
-                retries.append(retry)
+            if playlist_type == 'playlist':
+                track = track['track']
+            if playlist_type == 'playlist':
+                args = [track, True, None]
             else:
-                count = count + 1
-        playlist = sp.next(playlist)
-    for track in tracks:
-        if not silent:
-            progress(count, total, '{} - {}'.format(
-                    track['name'], 
-                    track['artists'][0]['name']
-                ))
-        retry = dl_sp_track(track) if playlist_type == 'playlist' else dl_sp_track(track, album=cover)
-        if retry:
-            retries.append(retry)
-        else:
-            count = count + 1
+                args = [track, cover, None]
+            q.put(args)
 
-    for track in retries:
+    for track in tracks:
         if playlist_type == 'playlist':
             track = track['track']
-        if not silent:
-            progress(count, total, '{} - {}'.format(
-                track['name'], 
-                track['artists'][0]['name']
-            ))
-        retry = dl_sp_track(track) if playlist_type == 'playlist' else dl_sp_track(track, album=cover)
-        if retry:
-            retries.append(retry)
+        if playlist_type == 'playlist':
+            args = [track, True, None]
         else:
-            count = count + 1
-            
+            args = [track, cover, None]
+        q.put(args)
+    
+    q.join()
+    count = 0
+    total = 0
+
     if not silent:
         print('{}/{} 100{}, Playlist download complete!'.format(count, total, '%'))
     os.chdir(root + '/out')
@@ -225,7 +215,9 @@ def dl_sp_track(track, silent=True, album=None):
         os.rename(filename, new_name)
 
     album_name = album[1] if album else track['album']['name']
-    with open('{}.jpg'.format(album_name), 'wb') as handle:
+    track_number = str(track['track_number'])
+    thumbnail_name = '{}-{}.jpg'.format(legalize_chars(album_name), track_number)
+    with open(thumbnail_name, 'wb') as handle:
         try:
             if album:
                 thumbnail = requests.get(album[0]).content
@@ -233,33 +225,38 @@ def dl_sp_track(track, silent=True, album=None):
                 thumbnail = requests.get(track['album']['images'][0]['url']).content
             handle.write(thumbnail)
         except Exception as e:
+            if isinstance(e, KeyboardInterrupt):
+                raise e
             print('ERROR: Processing of thumbnail for \"{} - {}\" failed.'.format(title, artist))
     
-    audio = MP3(new_name, ID3=ID3)
     try:
-        audio.add_tags()
-    except error as e:
-        if 'an ID3 tag already exists' in str(e):
-            pass
-        else:
-            print('ERROR: ID3 tags unable to be written.')
-    audio.tags.add(
-        APIC(
-            encoding=3,
-            mime='image/jpg',
-            type=3, 
-            desc=u'Cover',
-            data=open('{}.jpg'.format(album_name), 'rb').read()
+        audio = MP3(new_name, ID3=ID3)
+        audio.tags.add(
+            APIC(
+                encoding=3,
+                mime='image/jpg',
+                type=3, 
+                desc=u'Cover',
+                data=open(thumbnail_name, 'rb').read()
+            )
         )
-    )
-    audio.save(v2_version=3)    
-    print(track.keys())
-    audio = ID3(new_name)
-    audio.add(TIT2(encoding=3, text=title))
-    audio.add(TPE1(encoding=3, text=artist))
-    audio.add(TALB(encoding=3, text=album_name))
-    audio.save()
-    os.remove('{}.jpg'.format(album_name))
+        audio.save(v2_version=3)
+        try: 
+            tags = ID3(new_name)
+        except ID3NoHeaderError:
+            print("Adding ID3 header")
+        tags = ID3()
+        tags["TIT2"] = TIT2(encoding=3, text=title)
+        tags["TALB"] = TALB(encoding=3, text=album_name)
+        tags["TPE1"] = TPE1(encoding=3, text=artist)
+        tags["TRCK"] = TRCK(encoding=3, text=track_number)
+        tags.save(new_name)
+    except Exception as e:
+        if isinstance(e, KeyboardInterrupt):
+            raise e
+        print('ERROR: ID3 tags unable to be written.')
+
+    os.remove(thumbnail_name)
     if not silent:
         print('Download complete!')
 
@@ -267,8 +264,8 @@ def progress(count=0, total=1, song=''):
     percentage = int(count * 1000 / total)
     print(
         '{}/{} '.format(count, total),
-        percentage / 10.0, '%', 
-        'Complete. Now Processing: \"{}\".'.format(song), 
+        percentage / 10.0, '% ', 
+        '\"{}\" Download Complete!'.format(song), 
     )
 
 def legalize_chars(filename):
@@ -278,5 +275,27 @@ def legalize_chars(filename):
             filename = filename.replace(char, '')
     return filename
 
-def sp_playlist_thread():
-    global count, total, retries
+def spotipy_initialize():
+    global sp 
+    sp = spotipy.Spotify(
+        auth_manager=SpotifyOAuth(
+        client_id=tokens.SPOTIPY_CLIENT_ID, 
+        client_secret=tokens.SPOTIPY_CLIENT_SECRET, 
+        redirect_uri='http://localhost:8000', 
+        scope='user-library-read', 
+        cache_path='{}/OAuthCache.txt'.format(root)
+        )
+    )
+
+def sp_playlist_worker():
+    while True:
+        global count, total
+        args = q.get()
+        dl_sp_track(args[0], args[1], args[2])
+
+        count = count + 1
+        progress(count, total, '{} - {}'.format(
+            args[0]['name'], 
+            args[0]['artists'][0]['name']
+        ))
+        q.task_done()
