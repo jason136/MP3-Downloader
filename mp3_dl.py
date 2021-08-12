@@ -4,7 +4,7 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TRCK
 from mutagen.id3 import ID3NoHeaderError
 from youtube_dl.utils import DownloadError
-from requests.exceptions import ConnectionError, HTTPError
+from requests.exceptions import HTTPError
 
 import tokens
 
@@ -56,16 +56,23 @@ def dl_yt_playlist(link, silent=False):
     if not os.path.exists(playlist_name):
         os.mkdir(playlist_name)
     os.chdir(playlist_name)
+
+    global count, total
     total = len(result['entries'])
     count = 0
+    for i in range(10):
+        t = threading.Thread(target=yt_playlist_worker)
+        t.daemon = True
+        t.start()
     for video in result['entries']:
-        if not silent:
-            progress(count, total, video['title'])
-        dl_yt_video(video['webpage_url'])
-        count = count + 1
+        q.put(video)
+    q.join()
+
     os.chdir(root + '/out')
     if not silent:
-        print('{}/{}  100{}. Playlist download complete!'.format(count, total, '%'))
+        print('Playlist download complete!')
+    count = 0
+    total = 0
 
 def dl_yt_video(link, silent=True, recurse=False):
     try:
@@ -138,6 +145,8 @@ def dl_query(query, silent=True, duration=None, recurse=0):
     return filename
 
 def dl_spotify(input_link, silent=False):
+    if not sp:
+        spotipy_initialize()
     playlist_name = input_link['name']
     if len(input_link['tracks']['items'][0]) == 6:
         playlist_type = 'playlist'
@@ -165,7 +174,6 @@ def dl_spotify(input_link, silent=False):
         t = threading.Thread(target=sp_playlist_worker)
         t.daemon = True
         t.start()
-
     playlist = input_link['tracks']
     while playlist['next']:
         tracks = playlist['items']
@@ -178,7 +186,6 @@ def dl_spotify(input_link, silent=False):
                 args = [track, cover, None]
             q.put(args)
         playlist = sp.next(playlist)
-    
     tracks = playlist['items']
     for track in tracks:
         if playlist_type == 'playlist':
@@ -188,16 +195,17 @@ def dl_spotify(input_link, silent=False):
         else:
             args = [track, cover, None]
         q.put(args)
-    
     q.join()
 
     if not silent:
-        print('{}/{} 100{}, Playlist download complete!'.format(count, total, '%'))
+        print('Playlist download complete!')
     os.chdir(root + '/out')
     count = 0
     total = 0
 
 def dl_sp_track(track, silent=True, album=None):
+    if not sp:
+        spotipy_initialize
     title = track['name']
     artist = track['artists'][0]['name']
     if not silent:
@@ -300,4 +308,13 @@ def sp_playlist_worker():
             args[0]['name'], 
             args[0]['artists'][0]['name']
         ))
+        q.task_done()
+
+def yt_playlist_worker():
+    while True:
+        global count, total
+        video = q.get()
+        dl_yt_video(video['webpage_url'])
+        count = count + 1
+        progress(count, total, video['title'])
         q.task_done()
