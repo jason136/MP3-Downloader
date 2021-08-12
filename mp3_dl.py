@@ -74,7 +74,7 @@ def dl_yt_playlist(link, silent=False):
     count = 0
     total = 0
 
-def dl_yt_video(link, silent=True, recurse=False):
+def dl_yt_video(link, silent=True, recurse=0):
     try:
         if not silent:
             print('Downloading Youtube video...')
@@ -94,12 +94,12 @@ def dl_yt_video(link, silent=True, recurse=False):
             return
         elif 'Video unavailable' in str(e):
             return
-        if recurse:
+        if recurse >= 4:
             print('Retry unsucessful!')
             return None
         else:
             print('ERROR: Download of: \"{}\" failed. Retrying...'.format(link))
-            dl_yt_video(link, silent=True, recurse=True)
+            dl_yt_video(link, silent=True, recurse=recurse+1)
     if recurse:
         print('Retry sucessful!')
     try:
@@ -144,7 +144,7 @@ def dl_query(query, silent=True, duration=None, recurse=0):
         else:
             print('ERROR: Download for query: \"', query, '\" failed. Retrying...')
             filename = dl_query(query, silent=True, duration=duration, recurse=recurse+1)
-    if recurse >= 4:
+    if recurse:
         print('Retry sucessful, Download complete!')
     return filename
 

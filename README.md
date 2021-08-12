@@ -1,5 +1,5 @@
 # Music Downloader
-> Want music but don't have spotify premium or youtube premium music red (whatever it's called)? Want to obtain music in the jankiest way possible? Want to watch as the cute lil songs populate your hard drive automatically?If you answered yes to at least two of these questions then this music downloader is for you!
+> Want music but don't have Spotify premium or youtube premium music red (whatever it's called)? Want to obtain music in the jankiest way possible? Want to watch as the cute lil songs populate your hard drive automatically? If you answered yes to at least two of these questions then this music downloader is for you!
 
 ---
 
@@ -9,44 +9,88 @@ Requirements are Python and FFmpeg, reccomended latest versions but tested on Py
 Used modules include youtube_dl, spotipy, os, requests, and mutagen
 This repository does not include any executebles, so these modules will have to be installed for the script to work.
 
-The script currently only outputs mp3 files. 
+The script can be executed to download music from the python console (sparks joy) or by importing and calling its helper methods (does not spark joy, you will have to see the messy code). Helper methods will be documented below the python console how-to. 
 
-The script can be executed to download music from the python console (sparks joy) or by importing and calling its helper methods (does not spark joy, you will have to see the messy code). Only the python console version will be documented below. 
+If it does not already exist, the script will create a directory in its location called 'out', where all music will be downloaded to. 
 
-If it does not already exist, the script will create a directory in its location called out, where all music will be downloaded to. 
+# Spotify
+Music downloaded from Spotify will include title, album, artist, track number, and album art metadata embedded in the mp3 as an ID3 tag. 
 
-///more coming///
+Spotify playlists, albums, and tracks can be downloaded by inputting the link of the playlist when it is called for. If it is the first time using the Spotify API or the refresh token has expired the user will have to preform an OAuth authentication before proceeding. 
 
-## Spotify Playlists
-Music downloaded from spotify will include title, album, artist, and album art metadata embedded in the mp3. 
+For albums and playlists, the files will be downloaded in the 'out' folder in another folder of the album/playlist's name, for tracks it will just be in the 'out' folder. 
 
-Spotify playlists can be downloaded in their entirety by inputting the link of the playlist when it is called for. If it is the first time using the Spotify API or the refresh token has expired the user will have to preform an OAuth authentication before proceeding. 
+Spotify links need to be provided in the following forms for the script to work correctly:
+- Spotify Playlists:
+    ```https://open.spotify.com/playlist/73DYbNJDh5eWZ2zuzjpbRG?si=a26f27dbf2834883```
+- Spotify Albums:
+    ```https://open.spotify.com/album/3Gt7rOjcZQoHCfnKl5AkK7?si=eokGV3XXSICNbYt_CM6o0g&dl_branch=1```
+- Spotify Tracks:
+    ```https://open.spotify.com/track/1YrnDTqvcnUKxAIeXyaEmU?si=c41eb834e184467d```
 
-The playlist will be downloaded in the 'out' folder in another folder of the playlist's name
+# Youtube
+Music downloaded from Youtube will always come as-is, without any form of metadata. 
 
-As of now only Spotify playlists are supported, albums or artist urls will result in error
+Youtube playlists and tracks can be downloaded in the same fashon as Spotify playlists and tracks, with playlists in their own folder and tracks directly in 'out'. 
+
+Youtube links need to be provided in the following forms for the script to work correctly, however, the download may still work as long as videoID or playlistID is present:
+- Youtube Playlists:
+    ```https://www.youtube.com/playlist?list=PLef6-19fy90AbWJilApi31AwXHgjwbY4d```
+- Youtube Tracks:
+    ```https://www.youtube.com/watch?v=dQw4w9WgXcQ```
 
 # DISCLAIMERS
 All music is downloaded from YouTube
 
-* If it's a super obscure song or it has a misleading title the downloaded audio file may not be what was expected
-* The audio quality is the best found on YouTube and no better 
-* YouTube creator sometimes add intros or outtros even to lytic videos (idk why it sucks i know).
-* Artists sometimes add cutscenes or sound effects
+- If it's a super obscure song or it has a misleading title the downloaded audio file may not be what was expected
+- The audio quality is the best found on YouTube and no better 
+- YouTube creator sometimes add intros or outtros even to lytic videos (idk why it sucks i know).
+- Artists sometimes add cutscenes or sound effects
 
 All of these are remedied to an extent, ie matching up the closest song duration and looking for best audio quality, but it will not be perfect for everything. 
 on das a lie actwaly i was only thinking abt the duration thing but im thinking long abt it an itll be soon 
 
-## todo
-youtube playlist support
-youtube individual song support
-spotify individual song support
-spotify album support
-spotify artist support
-^soon^
+# Reference
+```python
+dl_yt_playlist(link, silent=False):
+```
+Downloads a Youtube playlist  
+Parameters:
+- link: str of Youtube playlist link to download from
+- silent: bool for whether to return status updates or not
 
-better error handling
-^ill get to it soon^
+```python
+dl_yt_video(link, silent=True, recurse=False):
+```
+Downloads a Youtube video from a Youtube link  
+Parameters:
+- link: str of Youtube video link to download from
+- silent: bool for whether to return status update or not
+- recurse: int, 4-recurse times to recursively retry downloads
 
-other sites?
-^unlikely ill get to it^
+```python
+dl_query(query, silent=True, duration=None, recurse=0):
+```
+Downloads a Youtube video from a search query  
+Parameters:
+- query: str of Youtube query to search and download from
+- silent: bool for whether to return status update or not
+- duration: int of seconds to search for closest duration
+- recurse: int, 4-recurse times to recursively retry downloads
+
+```python
+dl_spotify(input_link, silent=False):
+```
+Downloads a Spotify playlist or album  
+Parameters:
+- link: str of Spotify playlist/album link to download from
+- silent: bool for whether to return status update or not
+
+```python
+dl_sp_track(track, silent=True, album=None):
+```
+Downloads a Spotify track  
+Parameters:
+- link: str of Youtube video link to download from
+- silent: bool for whether to return status update or not
+- album: list containing metadata not obtainable from track object
