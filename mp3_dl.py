@@ -88,6 +88,8 @@ def dl_yt_video(link, silent=True, recurse=False):
             os.remove(new_name)
         os.rename(filename, new_name)
     except (DownloadError, HTTPError) as e:
+        if 'ffprobe/avprobe and ffmpeg/avconv not found' in str(e):
+            return
         if 'Incomplete YouTube ID' in str(e):
             return
         elif 'Video unavailable' in str(e):
@@ -134,6 +136,8 @@ def dl_query(query, silent=True, duration=None, recurse=0):
                 os.remove(new_name)
             os.rename(filename, new_name)
     except (DownloadError, HTTPError):
+        if 'ffprobe/avprobe and ffmpeg/avconv not found' in str(e):
+            return
         if recurse >= 4:
             print('Retry unsucessful! Please try again later.')
             return None
