@@ -135,7 +135,7 @@ def dl_query(query, silent=True, duration=None, recurse=0):
             if os.path.exists(new_name):
                 os.remove(new_name)
             os.rename(filename, new_name)
-    except (DownloadError, HTTPError):
+    except (DownloadError, HTTPError) as e:
         if 'ffprobe/avprobe and ffmpeg/avconv not found' in str(e):
             return
         if recurse >= 4:
