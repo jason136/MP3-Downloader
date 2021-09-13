@@ -66,8 +66,9 @@ if __name__ == '__main__':
 
     while True:
         link = input('Insert Spotify/Youtube link or Youtube search query: ')
-
+        ffmpeg_path = "./ffmpeg/ffmpeg.exe"
         try:
+            #p = subprocess.Popen([process_input(ffmpeg_path), link])
             process_input(link)
         except Exception as e:
             if isinstance(e, KeyboardInterrupt):

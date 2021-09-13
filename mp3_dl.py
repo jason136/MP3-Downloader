@@ -156,9 +156,9 @@ def dl_spotify(input_link, silent=False):
         playlist_type = 'playlist'
     else:
         playlist_type = 'album'
-        cover = []
-        cover.append(input_link['images'][0]['url'])
-        cover.append(playlist_name)
+        album = []
+        album.append(input_link['images'][0]['url'])
+        album.append(playlist_name)
 
     print('Downloading Spotify {}: \"{}\"...'.format(playlist_type, playlist_name))
     playlist_name = legalize_chars(playlist_name)
@@ -187,7 +187,7 @@ def dl_spotify(input_link, silent=False):
             if playlist_type == 'playlist':
                 args = [track, True, None]
             else:
-                args = [track, cover, None]
+                args = [track, True, album]
             q.put(args)
         playlist = sp.next(playlist)
     tracks = playlist['items']
@@ -197,7 +197,7 @@ def dl_spotify(input_link, silent=False):
         if playlist_type == 'playlist':
             args = [track, True, None]
         else:
-            args = [track, cover, None]
+            args = [track, True, album]
         q.put(args)
     q.join()
 
