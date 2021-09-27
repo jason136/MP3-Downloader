@@ -2,10 +2,11 @@ import os, spotipy, subprocess
 from requests.exceptions import ConnectionError
 
 import mp3_dl
+import tokens
 
 def process_input(link):
     if 'open.spotify.com' in link:
-        mp3_dl.spotipy_initialize()
+        mp3_dl.spotipy_initialize(tokens.SPOTIPY_CLIENT_ID, tokens.SPOTIPY_CLIENT_SECRET)
         if 'open.spotify.com/track/' in link:
             try:
                 track = mp3_dl.sp.track(track_id=link)

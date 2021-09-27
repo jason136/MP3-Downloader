@@ -6,8 +6,6 @@ from mutagen.id3 import ID3NoHeaderError
 from youtube_dl.utils import DownloadError
 from requests.exceptions import HTTPError
 
-import tokens
-
 root = os.getcwd()
 
 q = queue.Queue()
@@ -73,6 +71,7 @@ def dl_yt_playlist(link, silent=False):
         print('Playlist download complete!')
     count = 0
     total = 0
+    return True
 
 def dl_yt_video(link, silent=True, recurse=0):
     try:
@@ -96,7 +95,7 @@ def dl_yt_video(link, silent=True, recurse=0):
             return
         if recurse >= 4:
             print('Retry unsucessful!')
-            return None
+            return 
         else:
             print('ERROR: Download of: \"{}\" failed. Retrying...'.format(link))
             dl_yt_video(link, silent=True, recurse=recurse+1)
@@ -106,7 +105,7 @@ def dl_yt_video(link, silent=True, recurse=0):
         return filename
     except UnboundLocalError as e:
         if str(e) == 'local variable \'filename\' referenced before assignment':
-            return None
+            return 
 
 def dl_query(query, silent=True, duration=None, recurse=0):
     try:
@@ -206,6 +205,7 @@ def dl_spotify(input_link, silent=False):
     os.chdir(root + '/out')
     count = 0
     total = 0
+    return True
 
 def dl_sp_track(track, silent=True, album=None):
     if not sp:
@@ -289,12 +289,12 @@ def legalize_chars(filename):
             filename = filename.replace(char, '')
     return filename
 
-def spotipy_initialize():
+def spotipy_initialize(SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET):
     global sp 
     sp = spotipy.Spotify(
         auth_manager=SpotifyOAuth(
-        client_id=tokens.SPOTIPY_CLIENT_ID, 
-        client_secret=tokens.SPOTIPY_CLIENT_SECRET, 
+        client_id=SPOTIPY_CLIENT_ID, 
+        client_secret=SPOTIPY_CLIENT_SECRET, 
         redirect_uri='http://localhost:8000', 
         scope='user-library-read', 
         cache_path='{}/OAuthCache.txt'.format(root)
