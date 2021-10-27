@@ -5,13 +5,18 @@
 
 # Usage:
 Requirements are Python and FFmpeg, reccomended latest versions but tested on Python 3.9 and FFmpeg 4.4. 
+FFpmeg must be installed and included in the PATH to avoid codec/encoding errors. 
 
 Used modules include youtube_dl, spotipy, os, requests, and mutagen
 This repository does not include any executebles, so these modules will have to be installed for the script to work.
 
-The script can be executed to download music from the python console (sparks joy) or by importing and calling its helper methods (does not spark joy, you will have to see the messy code). Helper methods will be documented below the python console how-to. 
+The main.py can be executed to download music from the python console (sparks joy), while importing and calling its helper methods also works (does not spark joy, you will have to see the messy code). Helper methods will be documented below the console method how-to. 
 
 If it does not already exist, the script will create a directory in its location called 'out', where all music will be downloaded to. 
+
+A general usage tip: the script will encounter 403 Forbidden errors but will recovery and retry the download automatically. If the script seems stuck, please close the instance and try the download again; the script will pick up from where it left off. 
+
+If you notice your wifi speed is slower but your cpu is stronger, consider increasing the number of active threads. This can be done by changing the variable at the top of [mp3_dl.py](mp3_dl.py), the default value is 10. Conversely, if your wifi is fast but cpu is slow, consider decreasing this number for better results. 
 
 # Spotify
 Music downloaded from Spotify will include title, album, artist, track number, and album art metadata embedded in the mp3 as an ID3 tag. 
@@ -48,7 +53,6 @@ All music is downloaded from YouTube
 - Artists sometimes add cutscenes or sound effects
 
 All of these are remedied to an extent, ie matching up the closest song duration and looking for best audio quality, but it will not be perfect for everything. 
-on das a lie actwaly i was only thinking abt the duration thing but im thinking long abt it an itll be soon 
 
 # Reference
 ```python

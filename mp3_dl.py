@@ -6,11 +6,11 @@ from mutagen.id3 import ID3NoHeaderError
 from youtube_dl.utils import DownloadError
 from requests.exceptions import HTTPError
 
-root = os.getcwd()
+number_of_threads = 10
 
+root = os.getcwd()
 q = queue.Queue()
 sp = None
-
 count = 0
 total = 0
 
@@ -23,6 +23,7 @@ ytdl_options = {
     }],
     'extractaudio': True,
     'audioformat': 'mp3',
+    'ffmpeg-location': os.getcwd() + '/ffmpeg/ffmpeg.exe',
     'hls-prefer-ffmpeg': True, 
     'outtmpl': '%(id)s.%(ext)s',
     'restrictfilenames': True,
@@ -58,7 +59,7 @@ def dl_yt_playlist(link, silent=False):
     global count, total
     total = len(result['entries'])
     count = 0
-    for i in range(10):
+    for i in range(number_of_threads):
         t = threading.Thread(target=yt_playlist_worker)
         t.daemon = True
         t.start()
@@ -173,7 +174,7 @@ def dl_spotify(input_link, silent=False):
     tracks = playlist['items']
     total = total + len(tracks)
 
-    for i in range(10):
+    for i in range(number_of_threads):
         t = threading.Thread(target=sp_playlist_worker)
         t.daemon = True
         t.start()
@@ -268,7 +269,7 @@ def dl_sp_track(track, silent=True, album=None):
     except Exception as e:
         if isinstance(e, KeyboardInterrupt):
             raise e
-        print('ERROR: ID3 tags unable to be written.')
+        if not ('Errno 13' in str(e)): print('ERROR: ID3 tags unable to be written.')
 
     os.remove(thumbnail_name)
     if not silent:

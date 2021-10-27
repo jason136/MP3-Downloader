@@ -1,4 +1,4 @@
-import os, spotipy, subprocess
+import os, spotipy
 from requests.exceptions import ConnectionError
 
 import mp3_dl
@@ -18,7 +18,7 @@ def process_input(link):
                 return
             track = mp3_dl.sp.track(link)
             mp3_dl.dl_sp_track(track, silent=False)
-        
+         
         elif 'open.spotify.com/playlist/' in link:
             try:
                 playlist = mp3_dl.sp.playlist(playlist_id=link)
