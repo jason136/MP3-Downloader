@@ -75,4 +75,5 @@ if __name__ == '__main__':
             if isinstance(e, KeyboardInterrupt):
                 raise e
             print('ERROR: Unrecognized error. Please try again.')
+            raise(e)
             print(e)

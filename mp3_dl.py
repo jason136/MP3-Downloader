@@ -6,7 +6,7 @@ from mutagen.id3 import ID3NoHeaderError
 from youtube_dl.utils import DownloadError
 from requests.exceptions import HTTPError
 
-number_of_threads = 10
+number_of_threads = 50
 
 root = os.getcwd()
 q = queue.Queue()
@@ -23,7 +23,7 @@ ytdl_options = {
     }],
     'extractaudio': True,
     'audioformat': 'mp3',
-    'ffmpeg-location': os.getcwd() + '/ffmpeg/ffmpeg.exe',
+    #'ffmpeg-location': os.getcwd() + '/ffmpeg/ffmpeg.exe',
     'hls-prefer-ffmpeg': True, 
     'outtmpl': '%(id)s.%(ext)s',
     'restrictfilenames': True,
@@ -108,29 +108,24 @@ def dl_yt_video(link, silent=True, recurse=0):
         if str(e) == 'local variable \'filename\' referenced before assignment':
             return 
 
-def dl_query(query, silent=True, duration=None, recurse=0):
+def dl_query(query, silent=True, rename=False, recurse=0):
     try:
-        if duration:
-            lyric_vids = ytdl.extract_info('ytsearch:{} lyrics'.format(query), download=False, extra_info={'duration', 'id'})['entries']
-            best_diff = abs(duration - lyric_vids[0]['duration'])
-            best_option = lyric_vids[0]
-
-            for result in reversed(lyric_vids):
-                diff = abs(duration - result['duration'])
-                if (diff <= best_diff + 5):
-                    best_option = result
-                    best_diff = diff
-            
-            ytdl.download([best_option['webpage_url']])
-            filename = '{}.mp3'.format(best_option['id'])
+        query = query.replace('-', ' ')
+        if not silent:
+            print('Querying Youtube search for \"{}\"...'.format(query))
+        if rename:
+            result = ytdl.extract_info('ytsearch:{} lyrics'.format(query))
         else:
-            if not silent:
-                print('Querying Youtube search for \"{}\"...'.format(query))
             result = ytdl.extract_info('ytsearch:{}'.format(query))
+        try:
             filename = '{}.mp3'.format(result['entries'][0]['id'])
-            new_name = result['entries'][0]['title']
-            if not silent:
-                print('Audio from: \"{}\" Download complete!'.format(new_name))
+        except Exception as e:
+            print(result)
+            raise e
+        new_name = result['entries'][0]['title']
+        if not silent:
+            print('Audio from: \"{}\" Download complete!'.format(new_name))
+        if rename:
             new_name = '{}.mp3'.format(legalize_chars(new_name))
             if os.path.exists(new_name):
                 os.remove(new_name)
@@ -143,7 +138,7 @@ def dl_query(query, silent=True, duration=None, recurse=0):
             return None
         else:
             print('ERROR: Download for query: \"', query, '\" failed. Retrying...')
-            filename = dl_query(query, silent=True, duration=duration, recurse=recurse+1)
+            filename = dl_query(query, silent=True, rename=rename, recurse=recurse+1)
     if recurse:
         print('Retry sucessful, Download complete!')
     return filename
@@ -221,8 +216,7 @@ def dl_sp_track(track, silent=True, album=None):
     if os.path.isfile(new_name):
         return 
 
-    duration = int(track['duration_ms'] / 1000)
-    filename = dl_query(query, duration=duration)
+    filename = dl_query(query, silent=True, rename=False)
     if not filename:
         return track
 
