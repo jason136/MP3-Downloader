@@ -56,7 +56,7 @@ def process_input(link):
     elif not link or link.isspace():
         print("Please provide an input")
     else:
-        mp3_dl.dl_query(link, silent=False)
+        mp3_dl.dl_query(link, silent=False, rename=True)
 
 
 if __name__ == '__main__':
